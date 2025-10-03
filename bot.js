@@ -4,7 +4,7 @@ const express = require('express');
 const fetch = require('node-fetch');
 
 const TOKEN = process.env.DISCORD_TOKEN;
-const CHANNEL_IDS = process.env.CHANNEL_IDS ? process.env.CHANNEL_IDS.split(',') : []; // array de IDs
+const CHANNEL_IDS = process.env.CHANNEL_IDS ? process.env.CHANNEL_IDS.split(',') : [];
 const PORT = process.env.SERVER_PORT || 3000;
 
 if (!TOKEN) throw new Error("DISCORD_TOKEN não definido no .env");
@@ -30,7 +30,7 @@ app.post('/pets', (req, res) => {
         const desc = embed.description || '';
         const data = { timestamp: now };
 
-        // --- Parsing atualizado para novo formato ---
+        // --- Parsing de campos principais ---
         const lines = desc.split('\n');
         lines.forEach(line => {
             if (line.startsWith("🏷️")) data.name = line.replace(/🏷️ \*\*Name:\*\* /, '');
@@ -40,18 +40,23 @@ app.post('/pets', (req, res) => {
             if (line.startsWith("🎭")) data.traits = line.replace(/🎭 \*\*Traits:\*\* /, '');
         });
 
-        // --- Regex para JobId / PlaceId / QuickJoin ---
-        const jobMatch = desc.match(/Mobile\/PC\/iOS Job\s*```(\d+)```/);
+        // --- Captura Place ID e Job ID no formato simples ---
+        const placeMatch = desc.match(/Place ID:\s*(\d+)/i);
+        if (placeMatch) data.placeId = placeMatch[1];
+
+        const jobMatch = desc.match(/Job ID:\s*([a-zA-Z0-9-]+)/i);
         if (jobMatch) data.jobId = jobMatch[1];
 
-        const quickJoinMatch = desc.match(/quickjoin\/\?placeId=(\d+)&gameInstanceId=(\d+)/i);
+        // --- Quick Join ---
+        const quickJoinMatch = desc.match(/placeId=(\d+)&gameInstanceId=([a-zA-Z0-9-]+)/i);
         if (quickJoinMatch) {
             data.placeId = quickJoinMatch[1];
             data.jobId = quickJoinMatch[2];
             data.quickJoinUrl = `https://obritadavilindo-tech.github.io/Krxreimyquickjoin/?placeId=${data.placeId}&gameInstanceId=${data.jobId}`;
         }
 
-        const scriptJoinMatch = desc.match(/TeleportToPlaceInstance\((\d+), '(\d+)'/);
+        // --- Script Teleport ---
+        const scriptJoinMatch = desc.match(/TeleportToPlaceInstance\((\d+), '([a-zA-Z0-9-]+)'/);
         if (scriptJoinMatch) {
             data.placeId = scriptJoinMatch[1];
             data.jobId = scriptJoinMatch[2];
