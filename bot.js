@@ -1,7 +1,7 @@
 require('dotenv').config();
 const { Client, GatewayIntentBits } = require('discord.js');
 const express = require('express');
-const fetch = require('node-fetch'); // garanta que 'node-fetch' está instalado
+const fetch = require('node-fetch');
 
 const TOKEN = process.env.DISCORD_TOKEN;
 const CHANNEL_IDS = process.env.CHANNEL_IDS ? process.env.CHANNEL_IDS.split(',') : []; // array de IDs
@@ -13,15 +13,15 @@ if (CHANNEL_IDS.length === 0) throw new Error("CHANNEL_IDS não definido no .env
 const app = express();
 app.use(express.json());
 
-let receivedEmbeds = []; // manter na memória
+let receivedEmbeds = [];
 
-// Limpa embeds com mais de 6 minutos
+// 🧹 Limpa embeds com mais de 6 minutos
 function cleanOldEmbeds() {
     const now = Date.now();
     receivedEmbeds = receivedEmbeds.filter(e => now - e.timestamp < 6 * 60 * 1000);
 }
 
-// Endpoint para receber embeds
+// 📥 Endpoint para receber embeds
 app.post('/pets', (req, res) => {
     if (!req.body || !req.body.embeds) return res.sendStatus(400);
 
@@ -30,18 +30,34 @@ app.post('/pets', (req, res) => {
         const desc = embed.description || '';
         const data = { timestamp: now };
 
+        // --- Parsing atualizado para novo formato ---
         const lines = desc.split('\n');
-        lines.forEach((line, i) => {
+        lines.forEach(line => {
             if (line.startsWith("🏷️")) data.name = line.replace(/🏷️ \*\*Name:\*\* /, '');
             if (line.startsWith("💰")) data.value = line.replace(/💰 \*\*Money per sec:\*\* /, '');
             if (line.startsWith("👥")) data.players = line.replace(/👥 \*\*Players:\*\* /, '');
-            if (line.startsWith("🗺")) data.region = line.replace(/🗺 \*\*Region:\*\* /, '');
             if (line.startsWith("🧬")) data.mutation = line.replace(/🧬 \*\*Mutation:\*\* /, '');
             if (line.startsWith("🎭")) data.traits = line.replace(/🎭 \*\*Traits:\*\* /, '');
-            if (line.startsWith("📱 Mobile Job")) data.mobileJob = lines[i+1].replace(/```/, '');
-            if (line.startsWith("💻 PC Job")) data.pcJob = lines[i+1].replace(/```/, '');
         });
 
+        // --- Regex para JobId / PlaceId / QuickJoin ---
+        const jobMatch = desc.match(/Mobile\/PC\/iOS Job\s*```(\d+)```/);
+        if (jobMatch) data.jobId = jobMatch[1];
+
+        const quickJoinMatch = desc.match(/quickjoin\/\?placeId=(\d+)&gameInstanceId=(\d+)/i);
+        if (quickJoinMatch) {
+            data.placeId = quickJoinMatch[1];
+            data.jobId = quickJoinMatch[2];
+            data.quickJoinUrl = `https://obritadavilindo-tech.github.io/Krxreimyquickjoin/?placeId=${data.placeId}&gameInstanceId=${data.jobId}`;
+        }
+
+        const scriptJoinMatch = desc.match(/TeleportToPlaceInstance\((\d+), '(\d+)'/);
+        if (scriptJoinMatch) {
+            data.placeId = scriptJoinMatch[1];
+            data.jobId = scriptJoinMatch[2];
+        }
+
+        // --- Outras infos ---
         data.title = embed.title || '';
         data.color = embed.color || 0;
         data.thumbnail = embed.thumbnail ? embed.thumbnail.url : '';
@@ -51,11 +67,11 @@ app.post('/pets', (req, res) => {
     });
 
     cleanOldEmbeds();
-    console.log(`[💻] Novo embed recebido. Total: ${receivedEmbeds.length}`);
+    console.log(`[💻] Novo embed recebido. Total armazenados: ${receivedEmbeds.length}`);
     res.sendStatus(200);
 });
 
-// Página HTML com embeds mais recentes no topo
+// 🌐 Página HTML
 app.get('/', (req, res) => {
     cleanOldEmbeds();
 
@@ -64,11 +80,12 @@ app.get('/', (req, res) => {
     <head>
         <title>Received Pets</title>
         <style>
-            body { font-family: Arial, sans-serif; background:#121212; color:#eee; }
-            .pet { border:1px solid #444; padding:10px; margin:10px; border-radius:8px; background:#1e1e1e; }
-            .pet img { float:right; max-width:100px; }
-            h2 { margin:0; }
+            body { font-family: Arial, sans-serif; background:#121212; color:#eee; margin:20px; }
+            .pet { border:1px solid #333; padding:12px; margin:12px 0; border-radius:10px; background:#1e1e1e; }
+            .pet img { float:right; max-width:100px; border-radius:6px; }
+            h2 { margin:0; font-size:18px; color:#ffd700; }
             p { margin:2px 0; }
+            a { color:#4ea3ff; text-decoration:none; }
         </style>
     </head>
     <body>
@@ -82,15 +99,15 @@ app.get('/', (req, res) => {
         <div class="pet">
             <img src="${pet.thumbnail}" />
             <h2>${pet.title}</h2>
-            <p><b>Name:</b> ${pet.name}</p>
-            <p><b>Value:</b> ${pet.value}</p>
-            <p><b>Players:</b> ${pet.players}</p>
-            <p><b>Region:</b> ${pet.region}</p>
-            <p><b>Mutation:</b> ${pet.mutation}</p>
-            <p><b>Traits:</b> ${pet.traits}</p>
-            <p><b>Mobile Job:</b> ${pet.mobileJob}</p>
-            <p><b>PC Job:</b> ${pet.pcJob}</p>
-            <p><small>${pet.footer}</small></p>
+            <p><b>Name:</b> ${pet.name || 'N/A'}</p>
+            <p><b>Value:</b> ${pet.value || 'N/A'}</p>
+            <p><b>Players:</b> ${pet.players || 'N/A'}</p>
+            <p><b>Mutation:</b> ${pet.mutation || 'N/A'}</p>
+            <p><b>Traits:</b> ${pet.traits || 'N/A'}</p>
+            <p><b>Place ID:</b> ${pet.placeId || 'N/A'}</p>
+            <p><b>Job ID:</b> ${pet.jobId || 'N/A'}</p>
+            ${pet.quickJoinUrl ? `<p>🚀 <a href="${pet.quickJoinUrl}" target="_blank">Quick Join</a></p>` : ''}
+            <p><small>${pet.footer || ''}</small></p>
         </div>`;
     });
 
@@ -98,15 +115,15 @@ app.get('/', (req, res) => {
     res.send(html);
 });
 
-// Endpoint JSON dos últimos embeds, mais recentes primeiro
+// 📤 Endpoint JSON
 app.get('/latest-pets', (req, res) => {
     cleanOldEmbeds();
     const sortedEmbeds = receivedEmbeds.sort((a, b) => b.timestamp - a.timestamp);
     res.json(sortedEmbeds);
 });
 
-// Inicia servidor
-app.listen(PORT, () => console.log(`[✅] Server running at http://localhost:${PORT}`));
+// 🚀 Inicia servidor
+app.listen(PORT, "0.0.0.0", () => console.log(`[✅] Server running at http://localhost:${PORT}`));
 
 // ---------------- Discord Bot ----------------
 const client = new Client({
@@ -137,7 +154,7 @@ async function processMessage(msg) {
 }
 
 client.on('messageCreate', msg => {
-    if (!CHANNEL_IDS.includes(msg.channelId)) return; // verifica múltiplos canais
+    if (!CHANNEL_IDS.includes(msg.channelId)) return;
     processMessage(msg);
 });
 
